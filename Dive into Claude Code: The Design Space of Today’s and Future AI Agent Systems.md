@@ -1,5 +1,5 @@
 최근 클로드 코드, 코덱스 잘 쓰는법 skill,plugin,mcp 활용 같은 글들 bottom으로 내려가 baseline 코드 분석
-
+================================================
 https://arxiv.org/html/2604.14228v1
 openclaw와 claude code, 최근의 hermes와 같이 단순히 tool calling, mcp를 넘어 하네스를 통해 agentic workflow를 구축하는 데 그 중 하나인 claude code에서의 아키텍쳐에 대해 소개해놓은 논문
 
