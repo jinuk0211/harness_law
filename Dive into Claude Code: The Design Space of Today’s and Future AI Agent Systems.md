@@ -1,10 +1,13 @@
-https://arxiv.org/html/2604.14228v1
-openclaw와 claude code, 최근의 hermes와 같이 단순히 tool calling, mcp를 넘어 하네스를 통해 agentic workflow를 구축하는 데 그 중 하나인 claude code에서의 아키텍쳐에 대해 소개해놓음
+최근 클로드 코드, 코덱스 잘 쓰는법 skill,plugin,mcp 활용 같은 글들 bottom으로 내려가 baseline 코드 분석
 
-클로드 코드 공식문서 묘사
+https://arxiv.org/html/2604.14228v1
+openclaw와 claude code, 최근의 hermes와 같이 단순히 tool calling, mcp를 넘어 하네스를 통해 agentic workflow를 구축하는 데 그 중 하나인 claude code에서의 아키텍쳐에 대해 소개해놓은 논문
+
+클로드 코드가 무엇인지에 대한 안트로픽 공식문서 묘사
 ReAcT 형식으로 계획을 수립하고 액션(파일 읽기, 쓰기, shell 커맨드 실행)을 취하고 이를 task가 완료될때까지 수행하는 agentic loop
 
-클로드 코드에 관한 근본적인 질문
+다루기 앞서 클로드 코드에 관한 근본적인 질문과 대답
+===============================================
 1. 추론(reasoning) 어디에 존재하는가? 
 Claude Code는 AI가 “무엇을 할지”만 결정하고, 실제 실행은 하네스(harness)가 담당 = response의 tool_use 블럭 안의 지시
 모델은 직접 파일·쉘·네트워크에 접근하지 못하며 tool_use 요청만 보낸다.
