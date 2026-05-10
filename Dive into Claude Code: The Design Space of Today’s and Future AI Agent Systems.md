@@ -4,7 +4,7 @@ LLM을 둘러싸고 있는 하네스에 관해 - https://arxiv.org/html/2604.142
 
 openclaw와 claude code, 최근의 hermes와 같이 단순히 tool calling, mcp를 넘어 하네스를 통해 agentic workflow를 구축해 놓은 프로젝트가 많은데 그 중 하나인 claude code에서의 아키텍쳐에 대해 소개해놓은 논문
 
-클로드 코드가 무엇인지에 대한 안트로픽 공식문서 묘사 ->
+클로드 코드가 무엇인지에 대한 안트로픽 공식문서 묘사 =
 ReAcT 형식으로 계획을 수립하고 액션(파일 읽기, 쓰기, shell 커맨드 실행)을 취하고 이를 task가 완료될때까지 수행하는 agentic loop
 
 다루기 앞서 클로드 코드에 관한 근본적인 질문과 대답
