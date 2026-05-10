@@ -52,7 +52,7 @@ Claude Code는 확장성을 위해:
 
 MCP는 외부 서비스/tool 연동의 핵심 메커니즘
 stdio, HTTP, WebSocket, SSE 등 다양한 transport를 지원
-⭐⭐각 MCP server는 새로운 tool들을 model tool pool에 추가⭐⭐
+각 MCP server는 새로운 tool들을 model tool pool에 추가
 
 ---
 
