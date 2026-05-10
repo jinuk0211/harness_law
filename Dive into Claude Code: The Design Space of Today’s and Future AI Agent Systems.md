@@ -29,6 +29,115 @@ Claude Code의 핵심 제약은 연산량보다 컨텍스트 윈도우 크기다
 그래서 모델 호출 전마다 여러 단계의 컨텍스트 압축과 요약을 수행한다.
 짧은 압축부터 의미 기반 요약까지 단계적으로 적용해 토큰 사용량을 줄인다.
 
+<img width="923" height="1231" alt="image" src="https://github.com/user-attachments/assets/cb5971fb-7ca5-43c3-b8ec-dda7211d0b5b" />
+
+⭐⭐⭐⭐Extensibility 확장성에 관해⭐⭐⭐⭐
+============================
+### 1. Extensibility 구조 개요
+
+Claude Code는 확장성을 위해:
+
+* MCP
+* Plugins
+* Skills
+* Hooks
+
+의 4가지 메커니즘을 사용
+각각 context cost와 역할이 다르다
+
+---
+
+### 2. MCP Servers — `services/mcp/config.ts`, `services/mcp/client.ts`
+
+MCP는 외부 서비스/tool 연동의 핵심 메커니즘
+stdio, HTTP, WebSocket, SSE 등 다양한 transport를 지원
+⭐⭐각 MCP server는 새로운 tool들을 model tool pool에 추가⭐⭐
+
+---
+
+### 3. Plugins — `utils/plugins/schemas.ts`, `pluginLoader.ts`
+
+Plugin은 배포 포맷 + 확장 패키징 시스템 역할
+⭐⭐commands, agents, skills, hooks, MCP, settings 등 10개 component 타입을 포함할 수 있다⭐⭐
+즉 하나의 plugin이 Claude Code 여러 subsystem을 동시에 확장 가능하다
+
+---
+
+### 4. Skills — `loadSkillsDir.ts`
+
+Skill은 ⭐`SKILL.md`⭐ + YAML frontmatter 기반 instruction 패키지다
+allowed tools, model override, execution mode, hooks 등을 정의할 수 있다
+⭐⭐실행 시 SkillTool이 skill instruction을 context에 주입한다⭐⭐
+
+---
+
+### 5. Hooks — `coreTypes.ts`, `types/hooks.ts`
+
+총 27개 hook event가 존재
+⭐⭐permission flow, session lifecycle, context management, subagent coordination 등을 interception 가능⭐⭐
+hook은 tool call 차단·수정·retry guidance 제공까지 수행할 수 있다
+
+---
+
+### 6. Hook Types — `schemas/hooks.ts`
+
+persisted hook은:
+
+* shell command
+* LLM prompt
+* HTTP
+* agent verifier
+
+4종류를 지원
+SDK용 callback hook도 별도로 존재한다
+
+---
+
+### 7. Tool Pool Assembly — `tools.ts`
+
+`assembleToolPool()`이 built-in tool과 MCP tool을 통합
+base tools → mode filtering → deny filtering → MCP merge → deduplication 순으로 처리된다
+Claude Code 전체에서 이 함수가 single source of truth 역할
+
+---
+
+### 8. Base Tools — `getAllBaseTools()`
+
+최대 54개 tool이 존재한다:
+
+* 19개 항상 활성화 ⭐
+* 35개 조건부 활성화 ⭐
+
+feature flag, environment, user type에 따라 달라진다
+
+---
+
+### 9. 왜 4가지 메커니즘인가?
+
+확장 방식마다 context 비용이 다르기 때문으로
+⭐하나의 시스템으로 통합하면 lightweight extension과 heavyweight tool integration을 동시에 효율적으로 처리하기 어려움⭐
+즉 “표현력 vs context cost” tradeoff 때문에 분리된 구조 = 최근 마크다운 파일, html 파일, 여러 구조에서의 tradeoff 글
+
+---
+
+⭐⭐### 10. Context Cost 레이어⭐⭐
+
+* Hooks → 거의 0 context
+* Skills → 낮음
+* Plugins → 중간
+* MCP → 높음(tool schema 때문)
+
+즉 값싼 extension은 대규모 사용 가능하고, 비싼 extension은 필요한 경우만 사용
+
+---
+
+### 11. Claude Code의 확장 철학
+
+Claude Code는 “tool만 추가”하는 단순 구조가 아니다
+tool integration, instruction injection, lifecycle interception, packaging을 각각 분리
+대신 강력한 확장성을 얻는 대신 학습 난이도는 높아짐
+
+
 <img width="3855" height="1405" alt="image" src="https://github.com/user-attachments/assets/25c9a532-da10-4e08-9b03-b707fc8deff2" />
 
 클로드 코드의 구성요소
@@ -186,7 +295,7 @@ loop 종료 조건은:
 
 주제: Tool Authorization
 ==============================
-### 1. Tool Authorization 철학
+### 1. Tool Authorization 
 
 Claude Code는 deny-first + layered safety 구조를 사용
 사용자는 실제로 permission prompt를 대부분 그냥 승인하기 때문에, 시스템 자체 안전성이 중요하다고 보는데
@@ -265,122 +374,16 @@ permission approval과 sandboxing은 독립 시스템이다.
 예를 들어 subcommand가 너무 많으면 detailed permission parsing 대신 generic approval로 fallback됨
 즉 defense-in-depth도 성능 제약 때문에 약화될 수 있음
 
-⭐⭐⭐⭐Extensibility 확장성에 관해⭐⭐⭐⭐
-============================
-### 1. Extensibility 구조 개요
 
-Claude Code는 확장성을 위해:
-
-* MCP
-* Plugins
-* Skills
-* Hooks
-
-의 4가지 메커니즘을 사용
-각각 context cost와 역할이 다르다
-
----
-
-### 2. MCP Servers — `services/mcp/config.ts`, `services/mcp/client.ts`
-
-MCP는 외부 서비스/tool 연동의 핵심 메커니즘이다.
-stdio, HTTP, WebSocket, SSE 등 다양한 transport를 지원한다.
-각 MCP server는 새로운 tool들을 model tool pool에 추가한다.
-
----
-
-### 3. Plugins — `utils/plugins/schemas.ts`, `pluginLoader.ts`
-
-Plugin은 배포 포맷 + 확장 패키징 시스템 역할을 한다.
-commands, agents, skills, hooks, MCP, settings 등 10개 component 타입을 포함할 수 있다.
-즉 하나의 plugin이 Claude Code 여러 subsystem을 동시에 확장 가능하다.
-
----
-
-### 4. Skills — `loadSkillsDir.ts`
-
-Skill은 `SKILL.md` + YAML frontmatter 기반 instruction 패키지다.
-allowed tools, model override, execution mode, hooks 등을 정의할 수 있다.
-실행 시 SkillTool이 skill instruction을 context에 주입한다.
-
----
-
-### 5. Hooks — `coreTypes.ts`, `types/hooks.ts`
-
-총 27개 hook event가 존재한다.
-permission flow, session lifecycle, context management, subagent coordination 등을 interception 가능하다.
-hook은 tool call 차단·수정·retry guidance 제공까지 수행할 수 있다.
-
----
-
-### 6. Hook Types — `schemas/hooks.ts`
-
-persisted hook은:
-
-* shell command
-* LLM prompt
-* HTTP
-* agent verifier
-
-4종류를 지원한다.
-SDK용 callback hook도 별도로 존재한다.
-
----
-
-### 7. Tool Pool Assembly — `tools.ts`
-
-`assembleToolPool()`이 built-in tool과 MCP tool을 통합한다.
-base tools → mode filtering → deny filtering → MCP merge → deduplication 순으로 처리된다.
-Claude Code 전체에서 이 함수가 single source of truth 역할을 한다.
-
----
-
-### 8. Base Tools — `getAllBaseTools()`
-
-최대 54개 tool이 존재한다:
-
-* 19개 항상 활성화
-* 35개 조건부 활성화
-
-feature flag, environment, user type에 따라 달라진다.
-
----
-
-### 9. 왜 4가지 메커니즘인가?
-
-확장 방식마다 context 비용이 다르기 때문이다.
-하나의 시스템으로 통합하면 lightweight extension과 heavyweight tool integration을 동시에 효율적으로 처리하기 어렵다.
-즉 “표현력 vs context cost” tradeoff 때문에 분리된 구조다.
-
----
-
-### 10. Context Cost 계층
-
-* Hooks → 거의 0 context
-* Skills → 낮음
-* Plugins → 중간
-* MCP → 높음(tool schema 때문)
-
-즉 값싼 extension은 대규모 사용 가능하고, 비싼 extension은 필요한 경우만 사용한다.
-
----
-
-### 11. Claude Code의 확장 철학
-
-Claude Code는 “tool만 추가”하는 단순 구조가 아니다.
-tool integration, instruction injection, lifecycle interception, packaging을 각각 분리했다.
-대신 강력한 확장성을 얻는 대신 학습 난이도는 높아졌다.
-
-
-주제: Context engineering
+⭐⭐주제: Context engineering⭐⭐
 =============================
 <img width="793" height="464" alt="image" src="https://github.com/user-attachments/assets/ddab80ef-000f-4ab0-b215-351510aaf9e3" />
 
-### 1. Context Construction 철학
+### 1. Context Construction 
 
-Claude Code는 context window를 가장 중요한 희소 자원으로 본다.
-그래서 progressive compaction과 file-based memory 구조를 사용한다.
-memory도 opaque DB 대신 사용자가 직접 읽고 수정 가능한 파일 기반이다.
+Claude Code는 context window를 가장 중요한 희소 자원으로 본다
+그래서 progressive compaction과 file-based memory 구조를 사용
+memory도 opaque DB 대신 사용자가 직접 읽고 수정 가능한 파일 기반 = andrej karpathy의 wiki LLM 과 유사
 
 ---
 
@@ -395,16 +398,16 @@ context는:
 * conversation history
 * tool results
 
-등을 조합해 구성된다.
-일부 memory와 MCP instruction은 turn 도중 late injection된다.
+등을 조합해 구성
+일부 memory와 MCP instruction은 turn 도중 late injection된다
 
 ---
 
 ### 3. System Prompt vs User Context
 
-system prompt는 `appendSystemContext()`로 조립된다.
-CLAUDE.md는 system prompt가 아니라 user message로 prepend된다.
-즉 CLAUDE.md는 deterministic rule이 아니라 probabilistic guidance 역할이다.
+system prompt는 `appendSystemContext()`로 조립
+CLAUDE.md는 system prompt가 아니라 user message로 앞에 넣임 prepend
+즉 CLAUDE.md는 deterministic rule이 아니라 probabilistic guidance 역할 = query
 
 ---
 
@@ -417,39 +420,39 @@ CLAUDE.md는 system prompt가 아니라 user message로 prepend된다.
 3. project memory
 4. local memory
 
-디렉토리 탐색은 current directory에서 root까지 올라가며 수행된다.
+디렉토리 탐색은 current directory에서 root까지 올라가며 수행
 
 ---
 
 ### 5. Priority / Lazy Loading
 
-directory에 가까운 CLAUDE.md일수록 우선순위가 높다.
-nested directory rule은 해당 파일을 읽을 때 lazy loading된다.
-즉 코드 탐색에 따라 instruction set도 동적으로 변한다.
+directory에 가까운 CLAUDE.md일수록 우선순위가 높다
+nested directory rule은 해당 파일을 읽을 때 lazy loading된다
+즉 코드 탐색에 따라 instruction set도 동적으로 변한다
 
 ---
 
 ### 6. File-based Memory 철학
 
-Claude Code memory는 Markdown 파일 기반이다.
-사용자가 읽고 수정·삭제·git 관리 가능하다.
-vector DB나 embedding retrieval 대신 inspectability를 선택한 구조다.
+Claude Code memory는 Markdown 파일 기반으로
+사용자가 읽고 수정·삭제·git 관리 가능
+vector DB나 embedding retrieval 대신 inspectability를 선택한 구조 = memory.md
 
 ---
 
 ### 7. Auto Memory
 
-embedding retrieval 대신 LLM 기반 memory-file scan을 사용한다.
-관련 있는 memory file 최대 5개를 선택한다.
-entry 단위가 아니라 file 단위 retrieval이다.
+embedding retrieval 대신 LLM 기반 memory-file scan을 사용한
+관련 있는 memory file 최대 5개를 선택
+entry 단위가 아니라 file 단위 retrieval
 
 ---
 
 ### 8. `@include` Directive — `processMemoryFile()`
 
-CLAUDE.md는 `@include`로 modular memory 구성이 가능하다.
-relative/home/absolute path 모두 지원한다.
-circular reference는 자동 방지된다.
+CLAUDE.md는 `@include`로 modular memory 구성이 가능
+relative/home/absolute path 모두 지원
+circular reference는 자동 방지
 
 ---
 
@@ -463,38 +466,39 @@ circular reference는 자동 방지된다.
 4. context collapse
 5. auto-compact
 
-가벼운 압축부터 semantic summary까지 점진적으로 적용한다.
+가벼운 압축부터 semantic summary까지 비용 적게쓰는 방향으로 적용
 
 ---
 
 ### 10. Append-only Transcript 구조
 
-compaction은 기존 transcript를 수정하지 않는다.
-boundary marker와 summary를 append-only 방식으로 추가한다.
-즉 recovery와 reconstruction이 가능하다.
+compaction은 기존 transcript를 수정하지 않는다
+boundary marker와 summary를 append-only 방식으로 추가
+즉 recovery와 reconstruction이 가능
 
 ---
 
 ### 11. Compact Recovery Design — `compact.ts`
 
-compact 전 hook이 실행되어 custom instruction 삽입 가능하다.
-compact 후에는 runtime state(plan·skills·agents)를 다시 announce한다.
-summary로 context를 줄여도 실제 state는 유지된다.
+compact 전 hook이 실행되어 custom instruction 삽입 가능
+compact 후에는 runtime state(plan·skills·agents)를 다시 announce
+summary로 context를 줄여도 실제 state는 유지
 
 ---
 
 ### 12. Subagent Delegation — `AgentTool.tsx`
 
-Claude는 복잡한 작업을 subagent에 위임할 수 있다.
-subagent는 독립 context window 안에서 실행된다.
-즉 parent context를 오염시키지 않으면서 병렬 탐색이 가능하다.
+Claude는 복잡한 작업을 subagent에 위임할 수 있음 = agent.md
+subagent는 독립 context window 안에서 실행
+즉 parent context를 오염시키지 않으면서 병렬 탐색이 가능
 
 주제: subagent
+=======================
 ### 1. Agent Tool — `AgentTool.tsx`
 
-AgentTool은 Claude가 subagent를 생성해 작업을 위임하는 메타-tool이다.
-prompt, subagent type, isolation mode, permission override 등을 입력받는다.
-SkillTool과 달리 새로운 독립 context window를 생성한다.
+AgentTool은 Claude가 subagent를 생성해 작업을 위임하는 메타-tool
+prompt, subagent type, isolation mode, permission override 등을 입력받고
+SkillTool과 달리 새로운 독립 context window를 생성
 
 ---
 
@@ -509,21 +513,21 @@ SkillTool과 달리 새로운 독립 context window를 생성한다.
 * Verification
 * Statusline-setup
 
-각 agent는 목적별 deny-list와 permission 설정을 가진다.
+각 agent는 목적별 deny-list와 permission 설정이 잇음
 
 ---
 
 ### 3. Custom Agents — `.claude/agents/*.md`, `loadAgentsDir.ts`
 
-사용자는 Markdown 기반 custom agent를 정의할 수 있다.
-YAML frontmatter로 tools, model, hooks, permissionMode, skills 등을 설정한다.
-즉 agent 하나가 독립적인 mini-Claude subsystem처럼 동작 가능하다.
+사용자는 Markdown 기반 custom agent를 정의할 수 있다
+YAML frontmatter로 tools, model, hooks, permissionMode, skills 등을 설정 = agent.md 안에 skill, tool 사용하라 지시
+즉 agent 하나가 독립적인 mini-Claude subsystem처럼 동작 가능
 
 ---
 
 ### 4. Skill vs Agent
 
-Skill은 현재 context에 instruction만 추가한다.
+Skill은 현재 context에 instruction만 추가
 Agent는 완전히 새로운 isolated context를 생성한다.
 즉 Skill은 lightweight augmentation, Agent는 delegation 구조다.
 
@@ -537,8 +541,8 @@ subagent isolation mode는:
 * remote
 * in-process
 
-3종류가 존재한다.
-worktree는 Git 기반으로 독립 작업 디렉토리를 만든다.
+3종류가 존재
+worktree는 Git 기반으로 독립 작업 디렉토리를 만든다
 
 ---
 
@@ -552,73 +556,73 @@ container 없이 filesystem-level isolation을 제공한다.
 
 ### 7. Permission Override — `runAgent.ts`
 
-subagent는 자체 permissionMode를 가질 수 있다.
-하지만 parent가 bypassPermissions 같은 강한 mode면 parent 설정이 우선한다.
-즉 autonomy escalation은 제한된다.
+subagent는 자체 permissionMode를 가질 수 있다
+하지만 parent가 bypassPermissions 같은 강한 mode면 parent 설정이 우선
+즉 autonomy escalation은 제한된다
 
 ---
 
 ### 8. Async / Background Agents
 
-background agent는 기본적으로 사용자 prompt를 피하려고 한다.
-classifier와 hooks가 먼저 자동 판정한다.
-필요할 때만 parent terminal에 escalation한다.
+background agent는 기본적으로 사용자 prompt를 피하려고 한다
+classifier와 hooks가 먼저 자동 판정
+필요할 때만 parent terminal에 escalation 올림
 
 ---
 
 ### 9. Permission Scope 계층
 
-SDK-level allowedTools는 모든 subagent에 유지된다.
-하지만 session-level rule은 subagent allowedTools로 교체 가능하다.
-즉 global safety + local specialization 구조다.
+SDK-level allowedTools는 모든 subagent에 유지
+하지만 session-level rule은 subagent allowedTools로 교체 가능
+즉 global safety + local specialization 구조
 
 ---
 
 ### 10. Sidechain Transcripts — `sessionStorage.ts`, `runAgent.ts`
 
-각 subagent는 별도 `.jsonl` transcript를 가진다.
-parent context에는 summary만 반환된다.
-즉 debugging은 가능하면서 context explosion은 방지한다.
+각 subagent는 별도 `.jsonl` transcript를 가진다
+parent context에는 summary만 반환
+즉 디버깅은 가능하면서 context explosion은 방지
 
 ---
 
 ### 11. Summary-only Return 철학
 
-full transcript 공유는 context 폭발 위험이 있다.
-그래서 Claude Code는 subagent 결과만 요약해서 parent에 전달한다.
-agent team은 일반 세션보다 약 7배 token을 사용하기 때문이다.
+full transcript 공유는 context 폭발 위험이 있는데
+-> Claude Code는 subagent 결과만 요약해서 parent에 전달
+agent team은 일반 세션보다 약 7배 token을 사용하기 때문
 
 ---
 
 ### 12. Multi-agent Coordination
 
-agent team coordination은 message broker 대신 file locking을 사용한다.
-lock-file 기반 mutual exclusion으로 task를 분배한다.
-즉 외부 인프라 없이 plain-text JSON만으로 orchestration한다.
+agent team coordination은 message broker 대신 file locking을 사용
+lock-file 기반 mutual exclusion으로 task를 분배
+즉 외부 인프라 없이 plain-text JSON만으로 orchestration한다
 
 openclaw와 비교 
 ======================
 ### 1. 비교 대상 구조
 
-Claude Code는 repository 기반 CLI coding agent다.
-반면 OpenClaw는 WhatsApp·Slack·Discord 등을 연결하는 persistent gateway system이다.
-즉 둘은 “agent runtime 위치” 자체가 다르다.
+Claude Code는 repository 기반 CLI coding agent
+반면 OpenClaw는 WhatsApp·Slack·Discord 등을 연결하는 persistent gateway system
+즉 둘은 “agent runtime 위치” 자체가 다르다
 
 ---
 
 ### 2. System Scope 차이
 
-Claude Code는 세션 단위 ephemeral process다.
-OpenClaw는 항상 실행되는 WebSocket daemon(control plane)이다.
-Claude는 task-centric, OpenClaw는 platform-centric 구조다.
+Claude Code는 세션 단위 ephemeral process
+OpenClaw는 항상 실행되는 WebSocket daemon(control plane)
+Claude는 task-centric, OpenClaw는 platform-centric 구조
 
 ---
 
 ### 3. Trust Model 차이
 
-Claude Code는 deny-first permission evaluation을 사용한다.
-모델 자체를 잠재적으로 위험한 존재로 본다.
-OpenClaw는 trusted operator 기반 perimeter security를 사용한다.
+Claude Code는 deny-first permission evaluation을 사용
+모델 자체를 잠재적으로 위험한 존재로 본다
+OpenClaw는 trusted operator 기반 perimeter security를 사용
 
 ---
 
@@ -631,8 +635,8 @@ Claude는:
 * sandbox
 * 7 permission mode
 
-를 조합한다.
-trust boundary가 model ↔ execution environment 사이에 있다.
+를 조합
+trust boundary가 model ↔ execution environment 사이에 존재
 
 ---
 
@@ -644,24 +648,24 @@ OpenClaw는:
 * allowlist
 * gateway auth
 
-중심이다.
-즉 trust boundary가 gateway perimeter에 있다.
+중심이다
+즉 trust boundary가 gateway perimeter에 있다
 
 ---
 
 ### 6. Agent Runtime 비교
 
-Claude Code의 중심은 `queryLoop()`다.
-모든 인터페이스가 이 loop로 연결된다.
-반면 OpenClaw는 gateway 안에 agent runtime이 embedded된다.
+Claude Code의 중심은 `queryLoop()`다
+모든 인터페이스가 이 loop로 연결
+반면 OpenClaw는 gateway 안에 agent runtime이 embedded된다
 
 ---
 
 ### 7. Orchestration 차이
 
-Claude는 single-agent 중심 task loop다.
-OpenClaw는 multi-channel queue와 RPC dispatch 중심이다.
-즉 Claude는 harness, OpenClaw는 orchestration platform에 가깝다.
+Claude는 single-agent 중심 task loop다
+OpenClaw는 multi-channel queue와 RPC dispatch 중심
+즉 Claude는 harness, OpenClaw는 orchestration platform에 가깝다
 
 ---
 
@@ -673,57 +677,57 @@ Claude는:
 * plugins
 * skills
 * hooks
-
-4계층 확장 구조를 가진다.
-context cost 기준으로 설계되었다.
+  
+4계층 확장 구조를 가진다
+context cost 기준으로 설계
 
 ---
 
 ### 9. OpenClaw Plugin 구조
 
-OpenClaw는 manifest-first plugin system을 사용한다.
-text, speech, media, channels 등 12 capability type을 registry에 등록한다.
-즉 gateway 전체 capability를 확장한다.
+OpenClaw는 manifest-first plugin system을 사용
+text, speech, media, channels 등 12 capability type을 registry에 등록
+즉 gateway 전체 capability를 확장
 
 ---
 
 ### 10. Memory 철학 비교
 
-둘 다 file-based transparent memory를 사용한다.
-Claude는 compaction pipeline에 집중한다.
-OpenClaw는 dreaming·daily notes·hybrid retrieval 같은 장기 memory에 집중한다.
+둘 다 file-based transparent memory를 사용
+Claude는 compaction pipeline에 집중
+OpenClaw는 dreaming·daily notes·hybrid retrieval 같은 장기 memory에 집중
 
 ---
 
 ### 11. Multi-agent 구조 차이
 
-Claude subagent는 parent의 worker 역할이다.
-summary만 반환하고 독립 context를 가진다.
-OpenClaw는 아예 독립 agent instance들을 routing한다.
+Claude subagent는 parent의 worker 역할
+summary만 반환하고 독립 context를 가진다
+OpenClaw는 아예 독립 agent instance들을 routing
 
 ---
 
 ### 12. Claude Delegation 특징
 
-Claude multi-agent는 task delegation 구조다.
-Explore·Plan 같은 subordinate worker를 생성한다.
-즉 “하나의 작업을 분할”하는 목적이다.
+Claude multi-agent는 task delegation 구조
+Explore·Plan 같은 subordinate worker를 생성
+즉 “하나의 작업을 분할”하는 목적
 
 ---
 
 ### 13. OpenClaw Multi-agent 특징
 
-OpenClaw는 서로 다른 workspace·channel·user를 담당하는 agent들을 운영한다.
-즉 task worker보다 “multi-tenant agent hosting”에 가깝다.
-routing 자체가 핵심 기능이다.
+OpenClaw는 서로 다른 workspace·channel·user를 담당하는 agent들을 운영
+즉 task worker보다 “multi-tenant agent hosting”에 가깝다
+routing 자체가 핵심 기능
 
 ---
 
 ### 14. Composability
 
-OpenClaw는 Claude Code를 external harness로 호스팅 가능하다.
-즉 둘은 경쟁 관계라기보다 layered composition 관계다.
-gateway-level system 위에 task-level harness를 올리는 구조다.
+OpenClaw는 Claude Code를 external harness로 호스팅 가능
+즉 둘은 경쟁 관계라기보다 layered composition 관계
+gateway-level system 위에 task-level harness를 올리는 구조
 
 ---
 
@@ -736,5 +740,5 @@ gateway-level system 위에 task-level harness를 올리는 구조다.
 * memory
 * orchestration
 
-설계가 완전히 달라진다.
-Claude는 coding harness 최적화, OpenClaw는 persistent agent platform 최적화다.
+설계가 완전히 달라짐
+--> Claude는 coding harness 최적화, OpenClaw는 persistent agent platform 최적화다.
