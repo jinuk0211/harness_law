@@ -102,15 +102,11 @@ subagent 대화도 별도 sidechain 파일로 저장해 parent context 때문에
 MCP는 stdio·HTTP·WebSocket 등 다양한 transport를 지원
 `src/tools/` 아래 실제 tool 로직들이 구현됨
 
----
-
 ### 6. QueryEngine — `QueryEngine.ts`
 
 `QueryEngine`은 핵심 엔진이 아니라 비대화형 환경용 conversation wrapper
 실제 공통 실행 경로는 `query.ts`의 `query()`와 `queryLoop()`
 interactive CLI는 QueryEngine 없이 바로 query()를 호출
-
----
 
 ### 7. 7중 Safety Layer
 
@@ -118,78 +114,61 @@ Claude Code는 7개의 독립 안전 레이어 사용
 tool pre-filtering → deny-first rules → permission mode → ML classifier → sandbox → permission reset → hooks 순으로 진행되는데 
 하나라도 차단하면 실행되지 않는 defense-in-depth 구조
 
----
-
 ### 8. Context Bottleneck 최적화
 
 Claude Code는 context window를 가장 큰 병목으로 생각하는데
 그래서 lazy loading, deferred tool schema, subagent summary-only return 등을 사용
-즉 “필요한 정보만 context에 넣는 것”이 핵심 설계 철학이다.
+즉 “필요한 정보만 context에 넣는 것”이 핵심 설계
 
 주제: Turn execution에 관해
+===============================
 ### 1. Turn Execution / Agentic Loop — `query.ts`
 
-Claude Code는 ReAct 스타일 reactive loop를 사용한다.
-`queryLoop()`가 모델 호출 → tool 실행 → 결과 반영을 반복한다.
-복잡한 graph search 대신 단순 while-loop 구조로 속도와 단순성을 선택했다.
-
----
+Claude Code는 ReAct 스타일 reactive loop를 사용 = obs - act - res
+`queryLoop()`가 모델 호출 → tool 실행 → 결과 반영을 반복
+복잡한 graph search 대신 단순 while-loop 구조로 속도와 단순성 챙김
 
 ### 2. Query Pipeline — `query.ts`
 
-한 턴은 settings resolution → state init → context assembly → context shaping → model call → tool dispatch → permission check → tool result → stop condition 순서로 진행된다.
-`queryLoop()`는 AsyncGenerator 기반이라 streaming UI 출력이 가능하다.
-즉 내부는 동기 흐름처럼 유지하면서 외부에는 실시간 스트리밍을 제공한다.
-
----
+한 턴은 settings resolution → state init → context assembly → context shaping → model call → tool dispatch → permission check → tool result → stop condition 순서로 진행
+`queryLoop()`는 AsyncGenerator 기반이라 streaming UI 출력이 가능
+즉 내부는 sync 흐름처럼 유지하면서 외부에는 실시간 스트리밍을 제공하는 것
 
 ### 3. Tool Dispatch — `StreamingToolExecutor.ts`, `toolOrchestration.ts`
 
-tool_use가 나오면 StreamingToolExecutor가 tool을 실시간 병렬 실행한다.
-읽기 작업은 병렬 처리하고 shell 같은 state-changing 작업은 직렬 처리한다.
-결과 출력 순서는 모델 요청 순서를 그대로 유지한다.
-
----
+tool_use가 나오면 StreamingToolExecutor가 tool을 실시간 병렬 실행
+읽기 작업은 병렬 처리하고 shell 같은 state-changing 작업은 직렬 처리
+결과 출력 순서는 모델 요청 순서를 그대로 유지
 
 ### 4. Pre-Model Context Shapers — `query.ts`, `compact.ts`
 
-모델 호출 전 5단계 context shaping이 실행된다.
-budget reduction → snip → microcompact → context collapse → auto-compact 순이다.
-가벼운 압축부터 시작해 부족할 때만 강한 semantic summary를 수행한다.
-
----
+모델 호출 전 5단계 context shaping이 실행
+budget reduction → snip → microcompact → context collapse → auto-compact 순
+가벼운 압축부터 시작해 부족할 때만 강한 semantic summary를 수행 = 최대한 메모리사용 최소화
 
 ### 5. Budget Reduction — `applyToolResultBudget()`
 
-너무 긴 tool output을 잘라내고 content reference로 교체한다.
-일부 exempt tool은 전체 출력 유지가 가능하다.
-resume 시 복구할 수 있도록 replacement도 저장된다.
-
----
+너무 긴 tool output을 잘라내고 content reference로 교체
+일부 exempt tool은 전체 출력 유지가 가능
+resume 시 복구할 수 있도록 replacement도 저장
 
 ### 6. Snip / Microcompact
 
-Snip은 오래된 history 일부를 제거하는 가벼운 trimming이다.
-Microcompact는 시간 기반 + cache-aware 압축을 수행한다.
-둘 다 full summary 없이 token 사용량을 줄이는 목적이다.
-
----
+Snip은 오래된 history 일부를 제거하는 가벼운 처리 trimming
+Microcompact는 시간 기반 + cache-aware 압축을 수행
+둘 다 full summary 없이 토큰 사용량을 줄이는 목적
 
 ### 7. Context Collapse / Auto-Compact
 
-Context collapse는 전체 history를 유지하면서 모델에게는 축약된 projection만 보여준다.
-Auto-compact는 마지막 단계에서 모델이 직접 summary를 생성한다.
-즉 “최대한 원본 유지 + 필요할 때만 semantic summarize” 전략이다.
-
----
+Context collapse는 전체 history를 유지하면서 모델에게는 축약된 projection만 보여줌
+Auto-compact는 마지막 단계에서 모델이 직접 summary를 생성
+즉 “최대한 원본 유지 + 필요할 때만 semantic summarize” 전략
 
 ### 8. Recovery Mechanisms
 
-출력 token 초과, context overflow, streaming 오류 등에 대한 recovery 로직이 존재한다.
-reactive compact와 fallback model도 지원한다.
-즉 실패 시 바로 종료하지 않고 자동 복구를 시도한다.
-
----
+출력 토큰 초과, context overflow, streaming 오류 등에 대한 recovery 로직이 존재함
+reactive compact와 fallback model도 지원
+즉 실패 시 바로 종료하지 않고 자동 복구를 시도함
 
 ### 9. Stop Conditions
 
@@ -201,8 +180,7 @@ loop 종료 조건은:
 * hook 중단
 * abort signal
 
-등이다.
-즉 모델이 더 이상 action을 요청하지 않으면 턴이 종료된다.
+즉 모델이 더 이상 action을 요청하지 않으면 턴이 종료
 <img width="996" height="326" alt="image" src="https://github.com/user-attachments/assets/bc937c13-fa29-44ed-9f98-1001c9b83d8a" />
 
 
@@ -210,15 +188,13 @@ loop 종료 조건은:
 ==============================
 ### 1. Tool Authorization 철학
 
-Claude Code는 deny-first + layered safety 구조를 사용한다.
-사용자는 실제로 permission prompt를 대부분 그냥 승인하기 때문에, 시스템 자체 안전성이 중요하다고 본다.
-그래서 권한 규칙·sandbox·classifier를 독립적으로 중첩 적용한다.
-
----
+Claude Code는 deny-first + layered safety 구조를 사용
+사용자는 실제로 permission prompt를 대부분 그냥 승인하기 때문에, 시스템 자체 안전성이 중요하다고 보는데
+그래서 권한 규칙·sandbox·classifier를 독립적으로 둘다 적용한다.
 
 ### 2. Permission Modes — `types/permissions.ts`
 
-7가지 permission mode가 존재한다:
+7가지 permission mode가 존재:
 
 * `plan`
 * `default`
@@ -228,50 +204,36 @@ Claude Code는 deny-first + layered safety 구조를 사용한다.
 * `bypassPermissions`
 * `bubble`
 
-`plan`은 모든 실행 전 승인 필요, `bypassPermissions`는 최소한의 제한만 적용된다.
-
----
+`plan`은 모든 실행 전 승인을 요청하고, `bypassPermissions`는 최소한의 제한만 
 
 ### 3. Deny-first Rule Engine — `permissions.ts`
 
-권한 규칙은 무조건 deny 우선으로 평가된다.
-예를 들어 “모든 shell deny”가 있으면 “npm test allow”보다 우선한다.
-tool 이름뿐 아니라 Bash(prefix:npm) 같은 content-level matching도 지원한다.
-
----
+권한 규칙은 무조건 deny 우선으로 
+예를 들어 “모든 shell deny”가 있으면 “npm test allow”보다 우선해서 본다
+tool 이름뿐 아니라 Bash(prefix:npm) 같은 content-level matching도 지원
 
 ### 4. Pre-filtering — `tools.ts`
 
-`filterToolsByDenyRules()`가 금지된 tool을 모델에게 아예 숨긴다.
-즉 모델은 forbidden tool 존재 자체를 모른다.
-불필요한 tool call 낭비를 막는 목적이다.
-
----
+`filterToolsByDenyRules()`가 금지된 tool을 모델에게 아예 숨긴다
+즉 모델은 forbidden tool 존재 자체를 모르는데 불필요한 tool call 낭비를 막는 목적
 
 ### 5. Hook System — `types/hooks.ts`
 
-PreToolUse hook은 tool input 수정, deny, ask 등을 수행할 수 있다.
-PostToolUse hook은 결과 수정이나 context 추가를 담당한다.
-총 27개 hook event 중 5개가 permission flow에 직접 관여한다.
-
----
+PreToolUse hook은 tool input 수정, deny, ask 등을 수행가능
+PostToolUse hook은 결과 수정이나 context 추가를 담당
+총 27개 hook event 중 5개가 permission flow에 직접 관여
 
 ### 6. Authorization Pipeline
 
 tool request는:
-pre-filtering → hook → deny-first rules → permission handler → classifier → sandbox
-순으로 검사된다.
-어느 단계 하나라도 차단하면 실행되지 않는다.
-
----
+pre-filtering → hook → deny-first rules → permission handler → classifier → sandbox 순으로 검사진행
+어느 단계 하나라도 차단하면 실행되지 않는다
 
 ### 7. Auto-mode Classifier — `yoloClassifier.ts`
 
-ML classifier가 tool invocation 안전성을 자동 평가한다.
-conversation transcript와 permission template를 기반으로 allow/deny를 결정한다.
-사용자 approval 없이도 자동 차단이 가능하다.
-
----
+ML classifier가 tool invocation 안전성을 자동 평가
+conversation transcript와 permission template를 기반으로 allow/deny를 결정
+사용자 approval 없이도 자동 차단이 가능
 
 ### 8. Permission Handler — `useCanUseTool.tsx`
 
@@ -281,19 +243,15 @@ runtime 상황에 따라:
 * swarm worker
 * speculative classifier
 * interactive dialog
-
-중 하나로 분기된다.
-interactive mode에서는 사용자 승인창이 기본 fallback다.
-
----
+중 하나로 갈림
+interactive mode에서는 사용자 승인창이 기본 fallback
 
 ### 9. Denial as Routing Signal
 
-permission deny는 단순 실패가 아니라 “행동 수정 신호”로 사용된다.
-모델은 denial reason을 받고 다음 loop에서 더 안전한 방법을 시도한다.
-즉 authorization도 agent behavior shaping 일부다.
+permission deny는 단순 실패가 아니라 “행동 수정 신호”로 사용
+모델은 거부된 reason을 받고 다음 loop에서 더 안전한 방법을 시도
+즉 authorization도 agent behavior 생성하는데 영향을 미침
 
----
 
 ### 10. Shell Sandboxing — `shouldUseSandbox.ts`
 
@@ -301,15 +259,14 @@ shell command는 별도 sandbox 안에서 실행될 수 있다.
 permission approval과 sandboxing은 독립 시스템이다.
 허용된 명령도 filesystem/network 제한을 받을 수 있다.
 
----
-
 ### 11. Safety Layer 한계
 
-안전 계층은 독립적이어야 하지만 성능 문제를 공유하기도 한다.
-예를 들어 subcommand가 너무 많으면 detailed permission parsing 대신 generic approval로 fallback된다.
-즉 defense-in-depth도 성능 제약 때문에 약화될 수 있다.
+안전 계층은 독립적이어야 하지만 성능 문제를 공유하기도 한다
+예를 들어 subcommand가 너무 많으면 detailed permission parsing 대신 generic approval로 fallback됨
+즉 defense-in-depth도 성능 제약 때문에 약화될 수 있음
 
-Extensibility 확장성에 관해
+⭐⭐⭐⭐Extensibility 확장성에 관해⭐⭐⭐⭐
+============================
 ### 1. Extensibility 구조 개요
 
 Claude Code는 확장성을 위해:
@@ -319,8 +276,8 @@ Claude Code는 확장성을 위해:
 * Skills
 * Hooks
 
-의 4가지 메커니즘을 사용한다.
-각각 context cost와 역할이 다르다.
+의 4가지 메커니즘을 사용
+각각 context cost와 역할이 다르다
 
 ---
 
