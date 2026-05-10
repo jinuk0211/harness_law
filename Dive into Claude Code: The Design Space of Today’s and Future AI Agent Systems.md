@@ -751,4 +751,4 @@ gateway-level system 위에 task-level harness를 올리는 구조
 * orchestration
 
 설계가 완전히 달라짐
---> Claude는 coding harness 최적화, OpenClaw는 persistent agent platform 최적화다.
+--> Claude는 coding harness 최적화, OpenClaw는 persistent agent platform 최적화
