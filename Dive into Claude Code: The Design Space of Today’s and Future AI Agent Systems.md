@@ -74,56 +74,56 @@ Layered Subsystem Decomposition
 ------------------
 ### 1. Surface layer — `src/entrypoints/`, `src/screens/`, `src/components/`
 
-사용자 인터페이스 계층이다.
-`src/entrypoints/`는 CLI·SDK 시작점, `src/screens/`는 전체 화면 구성, `src/components/`는 terminal UI 컴포넌트를 담당한다.
-모든 인터페이스는 같은 agent loop로 연결되며 UI만 다르다.
+사용자 인터페이스 계층으로
+`src/entrypoints/`는 CLI·SDK 시작점, `src/screens/`는 전체 화면 구성, `src/components/`는 terminal UI 컴포넌트를 담당
+모든 인터페이스는 같은 agent loop로 연결되며 UI만 다르고 다 똑같은 소스코드
 
 ### 2. Core layer — `query.ts`
 
-핵심 agent loop는 `query.ts`의 `queryLoop()`에서 구현된다.
-모델 호출 전마다 budget reduction, snip, microcompact 등 5단계 context compaction을 수행한다.
-즉 Claude Code의 orchestration과 context 관리 중심 계층이다.
+핵심 agent loop는 `query.ts`의 `queryLoop()`에서 구현됨
+모델 호출 전마다 budget reduction, snip, microcompact 등 5단계 context compaction을 수행 = context engineering
+즉 Claude Code의 orchestration과 context 관리를 하는 레이어
 
 ### 3. Safety/action layer — `permissions.ts`, `types/hooks.ts`, `tools.ts`, `shouldUseSandbox.ts`
 
-권한 시스템은 `permissions.ts`에서 deny-first 정책으로 동작한다.
-`types/hooks.ts`는 hook interception, `tools.ts`는 tool pool 조립, `shouldUseSandbox.ts`는 shell sandbox를 담당한다.
-subagent도 일반 tool처럼 실행되며 독립 context를 사용한다.
+권한 시스템은 `permissions.ts`에서 deny-first 정책으로 동작
+`types/hooks.ts`는 hook interception, `tools.ts`는 tool pool 조립, `shouldUseSandbox.ts`는 shell sandbox를 담당
+subagent도 일반 tool처럼 실행되며 독립적인 independent context를 사용
 
 ### 4. State layer — `context.ts`, `sessionStorage.ts`, `history.ts`, `claudemd.ts`
 
-`context.ts`는 system/user context를 조립한다.
-`sessionStorage.ts`는 JSONL 세션 저장, `history.ts`는 global history, `claudemd.ts`는 instruction hierarchy를 관리한다.
-subagent 대화도 별도 sidechain 파일로 저장해 parent context 오염을 막는다.
+`context.ts`는 system/user context를 만드는데
+`sessionStorage.ts`는 JSONL 세션 저장, `history.ts`는 global history, `claudemd.ts`는 instruction hierarchy를 관리하는 형식
+subagent 대화도 별도 sidechain 파일로 저장해 parent context 때문에 inflating, 대화흐름이 오염되는걸 막음
 
 ### 5. Backend layer — `BashTool.tsx`, `PowerShellTool.tsx`, `services/mcp/client.ts`
 
-실제 shell 실행, 원격 실행, MCP 연결 등을 담당하는 계층이다.
-MCP는 stdio·HTTP·WebSocket 등 다양한 transport를 지원한다.
-`src/tools/` 아래 실제 tool 로직들이 구현된다.
+실제 shell 실행, 원격 실행, MCP 연결 등을 담당하는 레이어
+MCP는 stdio·HTTP·WebSocket 등 다양한 transport를 지원
+`src/tools/` 아래 실제 tool 로직들이 구현됨
 
 ---
 
 ### 6. QueryEngine — `QueryEngine.ts`
 
-`QueryEngine`은 핵심 엔진이 아니라 비대화형 환경용 conversation wrapper다.
-실제 공통 실행 경로는 `query.ts`의 `query()`와 `queryLoop()`이다.
-interactive CLI는 QueryEngine 없이 바로 query()를 호출한다.
+`QueryEngine`은 핵심 엔진이 아니라 비대화형 환경용 conversation wrapper
+실제 공통 실행 경로는 `query.ts`의 `query()`와 `queryLoop()`
+interactive CLI는 QueryEngine 없이 바로 query()를 호출
 
 ---
 
 ### 7. 7중 Safety Layer
 
-Claude Code는 7개의 독립 안전 계층을 사용한다.
-tool pre-filtering → deny-first rules → permission mode → ML classifier → sandbox → permission reset → hooks 순으로 방어한다.
-하나라도 차단하면 실행되지 않는 defense-in-depth 구조다.
+Claude Code는 7개의 독립 안전 레이어 사용
+tool pre-filtering → deny-first rules → permission mode → ML classifier → sandbox → permission reset → hooks 순으로 진행되는데 
+하나라도 차단하면 실행되지 않는 defense-in-depth 구조
 
 ---
 
 ### 8. Context Bottleneck 최적화
 
-Claude Code는 context window를 가장 큰 병목으로 본다.
-그래서 lazy loading, deferred tool schema, subagent summary-only return 등을 사용한다.
+Claude Code는 context window를 가장 큰 병목으로 생각하는데
+그래서 lazy loading, deferred tool schema, subagent summary-only return 등을 사용
 즉 “필요한 정보만 context에 넣는 것”이 핵심 설계 철학이다.
 
 주제: Turn execution에 관해
